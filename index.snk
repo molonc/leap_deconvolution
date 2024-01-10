@@ -1,0 +1,185 @@
+import pandas as pd
+import os
+md = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/sequencingrun_SLX23704/snakemake_metadata.csv") #("./snakemake_metadata.csv")
+SLX_ID = os.path.basename(md['bamfiles'][0]).split("-")[0]
+LEAP_ID_MAP = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/reference__data/sample_table.tsv", dtype={'PBCP_ID':str, "LEAP_ID":str, "VCF_ID":str})
+SLX_table = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/reference__data/SLX_table.csv")
+
+
+
+def search_pbcp_id_and_vcf(data, slx_id, sample_table_path):
+    """
+    Search for rows with a specific SLX_ID, return corresponding PBCP_ID values, and then
+    look up these PBCP_IDs in a second table to return matching VCF_ID values.
+
+    :param data: pandas DataFrame containing the first data set.
+    :param slx_id: The SLX_ID value to search for.
+    :param sample_table_path: Path to the second table file (sample_table.tsv).
+    :return: List of VCF_ID values corresponding to the PBCP_IDs found for the given SLX_ID.
+    """
+    # Filter the DataFrame for rows where SLX_ID matches the given slx_id
+    filtered_data = data[data['SLX_ID'] == slx_id]
+
+    # Extract the PBCP_ID values
+    pbcp_ids = filtered_data['PBCP_ID'].tolist()
+
+    # Load the second table
+    sample_table_df = pd.read_csv(sample_table_path, sep=',', dtype={"VCF_ID":str})
+
+    # Filter the second table for rows where PBCP_ID is in the list of found pbcp_ids
+    filtered_sample_data = sample_table_df[sample_table_df['PBCP_ID'].isin(pbcp_ids)]
+
+    # Extract the VCF_ID values
+    vcf_ids = filtered_sample_data['VCF_ID'].tolist()
+
+    return vcf_ids
+
+
+# Example usage
+slx_id_to_search = os.path.basename(md["bamfiles"][0]).split("-")[0].replace("SLX","SLX-")
+sample_table_path = '/projects/molonc/scratch/sbeatty/SCY-288/reference__data/sample_table.tsv'
+result = search_pbcp_id_and_vcf(SLX_table, slx_id_to_search, sample_table_path)
+print("VCF_IDs for SLX_ID '{}':".format(slx_id_to_search,), result)
+result_string = ' -s '.join(map(str, result))
+
+donor_vcf_to_generate = "/projects/molonc/scratch/sbeatty/SCY-288/reference__data/donor_vcf_subsets/" + str(slx_id_to_search) + "." + '.'.join([str(elem) for elem in result]) + ".vcf"
+
+bcftools_command = "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o " + str(donor_vcf_to_generate) + " -s " + str(result_string) + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
+print(bcftools_command)
+
+def getbamfile(wildcards):
+    x = md[md["cell_ids"] == wildcards.cell_id]
+    return x["bamfiles"]
+
+rule all:
+    input:
+        expand("{bampath_i}.bai", bampath_i=md["bamfiles"]),
+        #"results/output/vireo/summary.tsv",
+        #"results/output/vireo_all/summary.tsv",
+        "results/output/cluster_assignment_pca_plot.png",
+        str(donor_vcf_to_generate)
+
+rule make_vcf_reference:
+    input:
+        "/projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
+    params:
+        slx_id=str(slx_id_to_search),
+        result_str= str(result_string)
+    output:
+        str(donor_vcf_to_generate) 
+    shell:
+          "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o {params.slx_id}" + "." + str(donor_vcf_to_generate) + " -s {params.result_str}" + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
+
+rule samtools_index:
+    input:
+        "{bampath_i}"
+    output:
+        "{bampath_i}.bai"
+    shell:
+        "/gsc/software/linux-x86_64-centos7/samtools-1.9/bin/samtools index {input}"
+
+rule genotypecells:
+    input:
+        bam = getbamfile
+    output:
+        results_DP_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.DP.mtx",
+        results_AD_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.AD.mtx",
+        results_OTH_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.OTH.mtx",
+        results_sample = "results/output/scgenotyping/{cell_id}/cellSNP.samples.tsv",
+        vcf = "results/output/scgenotyping/{cell_id}/cellSNP.base.vcf.gz",
+    threads: 5
+    conda: "vireo.yml"
+    resources: mem_mb=1024 * 1
+    shell:
+        """
+        cellsnp-lite -s {input.bam} \
+            -I {wildcards.cell_id} \
+            -O "results/output/scgenotyping/{wildcards.cell_id}/" \
+            -R /projects/molonc/aparicio_lab/sbeatty/reference/genome1K.phase3.SNP_AF5e4.chr1toX.hg19.vcf.gz \
+            -p {threads} \
+            --cellTAG None \
+            --UMItag None \
+            --gzip \
+            --minCOUNT 0 \
+            --exclFLAG UNMAP,SECONDARY,QCFAIL,DUP
+        """
+
+rule format_per_cell_counts:
+    input: 
+        results_DP_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.DP.mtx",
+        results_AD_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.AD.mtx",
+        results_OTH_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.OTH.mtx",
+        results_sample = "results/output/scgenotyping/{cell_id}/cellSNP.samples.tsv",
+        vcf = "results/output/scgenotyping/{cell_id}/cellSNP.base.vcf.gz",
+    output: 
+        alldata = "results/output/scgenotyping/{cell_id}/snv_counts.csv.gz"
+    threads: 4
+    resources: mem_mb=1024 * 1
+    script: "scripts/format_cellsnpcounts.R"
+
+def allsnvfiles(wildcards):
+    x = expand("results/output/scgenotyping/{cell_id}/snv_counts.csv.gz", cell_id = md["cell_ids"])
+    return x
+
+rule mergesnvs:
+    input: 
+        allsnvfiles
+    output:
+        merged = "results/output/snv_counts.csv.gz"
+    threads: 4
+    resources: mem_mb=1024 * 25
+    run:
+        dist_list = []
+        for f in input:
+            print(f)
+            dist_temp = pd.read_csv(f)
+            dist_list.append(dist_temp)
+        dist = pd.concat(dist_list, ignore_index=True)
+        dist.to_csv(output.merged, sep=',')
+
+rule to_vcf:
+    input:
+        counts = "results/output/snv_counts.csv.gz"
+    output:
+        vcf = "results/output/snv_counts.vcf"
+    threads: 4
+    resources: mem_mb=1024 * 25
+    script: "scripts/to_vcf.R"
+
+rule kmeans:
+    input:
+        counts = "results/output/snv_counts.csv.gz"
+    output:
+        cluster_assignment = "results/output/cluster_assignment.csv",
+        cluster_assignment_wpca = "results/output/cluster_assignment_pca.csv",
+        plot = "results/output/cluster_assignment_pca_plot.png"
+    threads: 4
+    resources: mem_mb=1024 * 10
+    script: "scripts/kmeans.R"
+
+
+rule vireo:
+    input:
+        vcf = "results/output/snv_counts.vcf"
+    output:
+        vireo = "results/output/vireo_all/summary.tsv"
+    conda: "vireo.yml"
+    threads: 30
+    resources: mem_mb=1024 * 30
+    shell:
+        """
+        vireo -c {input.vcf} -d /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf -N 3 -o results/output/vireo_all -p {threads}
+        """
+
+rule vireo_no_doner:
+    input:
+        vcf = "results/output/snv_counts.vcf"
+    output:
+        vireo = "results/output/vireo_no_donor/summary.tsv"
+    conda: "vireo.yml"
+    threads: 30
+    resources: mem_mb=1024 * 30
+    shell:
+        """
+        vireo -c {input.vcf} -N 3 -o results/output/vireo_no_donor -p {threads}
+        """
