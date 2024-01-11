@@ -1,9 +1,23 @@
 import pandas as pd
 import os
-md = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/sequencingrun_SLX23704/snakemake_metadata.csv") #("./snakemake_metadata.csv")
+configfile: "config.yaml"
+#configfile: "/projects/molonc/scratch/sbeatty/SCY-289/mondrian_output/sequencingrun_SLX23704/config.yaml"
+
+
+
+md = pd.read_csv(config["md"])
 SLX_ID = os.path.basename(md['bamfiles'][0]).split("-")[0]
-LEAP_ID_MAP = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/reference__data/sample_table.tsv", dtype={'PBCP_ID':str, "LEAP_ID":str, "VCF_ID":str})
-SLX_table = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/reference__data/SLX_table.csv")
+LEAP_ID_MAP = pd.read_csv(config["LEAP_ID_MAP"], dtype={'PBCP_ID':str, "LEAP_ID":str, "VCF_ID":str})
+SLX_table = pd.read_csv(config["SLX_table"])
+
+# md = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/sequencingrun_SLX23704/snakemake_metadata.csv") #("./snakemake_metadata.csv")
+#SLX_ID = os.path.basename(md['bamfiles'][0]).split("-")[0]
+#LEAP_ID_MAP = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/reference__data/sample_table.tsv", dtype={'PBCP_ID':str, "LEAP_ID":str, "VCF_ID":str})
+#SLX_table = pd.read_csv("/projects/molonc/scratch/sbeatty/SCY-288/reference__data/SLX_table.csv")
+
+#md:"/projects/molonc/scratch/sbeatty/SCY-288/sequencingrun_SLX23704/snakemake_metadata.csv"
+#LEAP_ID_MAP:"/projects/molonc/scratch/sbeatty/SCY-288/reference__data/sample_table.tsv"
+#SLX_table:"/projects/molonc/scratch/sbeatty/SCY-288/reference__data/SLX_table.csv"
 
 
 
@@ -44,21 +58,22 @@ result_string = ' -s '.join(map(str, result))
 
 donor_vcf_to_generate = "/projects/molonc/scratch/sbeatty/SCY-288/reference__data/donor_vcf_subsets/" + str(slx_id_to_search) + "." + '.'.join([str(elem) for elem in result]) + ".vcf"
 
-bcftools_command = "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o " + str(donor_vcf_to_generate) + " -s " + str(result_string) + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
-print(bcftools_command)
+#bcftools_command = "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o " + str(donor_vcf_to_generate) + " -s " + str(result_string) + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
+#print(bcftools_command)
 
 def getbamfile(wildcards):
     x = md[md["cell_ids"] == wildcards.cell_id]
     return x["bamfiles"]
 
+
 rule all:
     input:
         expand("{bampath_i}.bai", bampath_i=md["bamfiles"]),
-        #"results/output/vireo/summary.tsv",
-        #"results/output/vireo_all/summary.tsv",
+        "results/output/vireo/summary.tsv",
         "results/output/cluster_assignment_pca_plot.png",
-        str(donor_vcf_to_generate)
-
+        str(donor_vcf_to_generate),
+        "results/output/check_sequencing_run_count.png",
+        
 rule make_vcf_reference:
     input:
         "/projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
@@ -68,7 +83,7 @@ rule make_vcf_reference:
     output:
         str(donor_vcf_to_generate) 
     shell:
-          "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o {params.slx_id}" + "." + str(donor_vcf_to_generate) + " -s {params.result_str}" + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
+        "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o {params.slx_id}" + "." + str(donor_vcf_to_generate) + " -s {params.result_str}" + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
 
 rule samtools_index:
     input:
@@ -115,7 +130,7 @@ rule format_per_cell_counts:
         alldata = "results/output/scgenotyping/{cell_id}/snv_counts.csv.gz"
     threads: 4
     resources: mem_mb=1024 * 1
-    script: "scripts/format_cellsnpcounts.R"
+    script: "/projects/molonc/scratch/sbeatty/SCY-289/leap_deconvolution/format_cellsnpcounts.R"
 
 def allsnvfiles(wildcards):
     x = expand("results/output/scgenotyping/{cell_id}/snv_counts.csv.gz", cell_id = md["cell_ids"])
@@ -144,7 +159,7 @@ rule to_vcf:
         vcf = "results/output/snv_counts.vcf"
     threads: 4
     resources: mem_mb=1024 * 25
-    script: "scripts/to_vcf.R"
+    script: "/projects/molonc/scratch/sbeatty/SCY-289/leap_deconvolution/to_vcf.R"
 
 rule kmeans:
     input:
@@ -160,26 +175,25 @@ rule kmeans:
 
 rule vireo:
     input:
-        vcf = "results/output/snv_counts.vcf"
+        vcf = "results/output/snv_counts.vcf",
+        donor_vcf_reference = str(donor_vcf_to_generate)
     output:
-        vireo = "results/output/vireo_all/summary.tsv"
+        vireo = "results/output/vireo/summary.tsv"
     conda: "vireo.yml"
-    threads: 30
+    threads: 5
     resources: mem_mb=1024 * 30
     shell:
         """
-        vireo -c {input.vcf} -d /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf -N 3 -o results/output/vireo_all -p {threads}
+        vireo -c {input.vcf} -d {input.donor_vcf_reference} -N 3 -o results/output/vireo -p {threads}
         """
 
-rule vireo_no_doner:
+rule compare_pca_vireo:
     input:
-        vcf = "results/output/snv_counts.vcf"
+        cluster_assignment_csv = "results/output/cluster_assignment.csv",
     output:
-        vireo = "results/output/vireo_no_donor/summary.tsv"
+        pca_vireo_figure = "results/output/check_sequencing_run_count.png"
     conda: "vireo.yml"
-    threads: 30
-    resources: mem_mb=1024 * 30
     shell:
         """
-        vireo -c {input.vcf} -N 3 -o results/output/vireo_no_donor -p {threads}
+        python /projects/molonc/scratch/sbeatty/SCY-289/leap_deconvolution/compare_vireo_pca.py {input.cluster_assignment_csv} results/output/vireo/donor_ids.tsv {output.pca_vireo_figure}
         """
