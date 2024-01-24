@@ -14,7 +14,7 @@ def main(bam_directory,metadata_outpath):
     else:
         bam_directory = bam_directory + str("*.bam")
 
-    bamfiles = pd.Series(glob.glob(bam_directory))
+    bamfiles = pd.Series(glob.glob(bam_directory)).str.replace("\\./","")
     cell_ids = bamfiles.apply(os.path.basename).str.replace(".bam", "")
     df = {'cell_ids': cell_ids, 'bamfiles': bamfiles}
     metadata_df = pd.DataFrame(df)
