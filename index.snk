@@ -170,7 +170,7 @@ rule kmeans:
         plot = "results/output/cluster_assignment_pca_plot.png"
     threads: 4
     resources: mem_mb=1024 * 10
-    script: "scripts/kmeans.R"
+    script: "/projects/molonc/scratch/sbeatty/SCY-289/leap_deconvolution/kmeans.R"
 
 
 rule vireo:
