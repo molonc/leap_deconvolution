@@ -54,7 +54,7 @@ slx_id_to_search = os.path.basename(md["bamfiles"][0]).split("-")[0].replace("SL
 sample_table_path = '/projects/molonc/scratch/sbeatty/SCY-288/reference__data/sample_table.tsv'
 result = search_pbcp_id_and_vcf(SLX_table, slx_id_to_search, sample_table_path)
 print("VCF_IDs for SLX_ID '{}':".format(slx_id_to_search,), result)
-result_string = ' -s '.join(map(str, result))
+result_string = ','.join(map(str, result))
 
 donor_vcf_to_generate = "/projects/molonc/scratch/sbeatty/SCY-288/reference__data/donor_vcf_subsets/" + str(slx_id_to_search) + "." + '.'.join([str(elem) for elem in result]) + ".vcf"
 
