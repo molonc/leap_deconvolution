@@ -83,7 +83,7 @@ rule make_vcf_reference:
     output:
         str(donor_vcf_to_generate) 
     shell:
-        "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o {params.slx_id}" + "." + str(donor_vcf_to_generate) + " -s {params.result_str}" + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
+        "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o " + str(donor_vcf_to_generate) + " -s {params.result_str}" + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
 
 rule samtools_index:
     input:
@@ -95,7 +95,8 @@ rule samtools_index:
 
 rule genotypecells:
     input:
-        bam = getbamfile
+        bam = getbamfile,
+        vcf_reference = str(donor_vcf_to_generate) 
     output:
         results_DP_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.DP.mtx",
         results_AD_mtx = "results/output/scgenotyping/{cell_id}/cellSNP.tag.AD.mtx",
@@ -110,7 +111,7 @@ rule genotypecells:
         cellsnp-lite -s {input.bam} \
             -I {wildcards.cell_id} \
             -O "results/output/scgenotyping/{wildcards.cell_id}/" \
-            -R /projects/molonc/aparicio_lab/sbeatty/reference/genome1K.phase3.SNP_AF5e4.chr1toX.hg19.vcf.gz \
+            -R {input.vcf_reference} \
             -p {threads} \
             --cellTAG None \
             --UMItag None \
