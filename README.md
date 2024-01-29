@@ -26,6 +26,13 @@ sinto filterbarcodes -b ../alignment_workflow_all_cells_bulk.bam -c ../sinto_met
 ```
 python /projects/molonc/scratch/sbeatty/SCY-289/leap_deconvolution/prep_snakemake_metadata.py ./sinto ./snakemake_metadata.csv
 ```
+## Create snakemake config file
+Run the following script from the working directory of the sequencing. 
+
+```
+sh /projects/molonc/scratch/sbeatty/SCY-289/leap_deconvolution/create_config.sh
+```
+
 ## Run snakemake
 ```
 snakemake -s /path/to/snakemake_file/index.snk --cluster "sbatch --mem-per-cpu=15G -c 10 -p upgrade" --jobs 1000 --latency-wait 60
