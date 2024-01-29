@@ -1,10 +1,6 @@
 # leap_deconvolution
 
 
-Process
-
-Short version 
-
 ## create sinto subdirectory
 
 ## prep the sinto metadata file (see below for description
