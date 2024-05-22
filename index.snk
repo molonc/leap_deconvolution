@@ -49,6 +49,7 @@ def search_pbcp_id_and_vcf(data, slx_id, sample_table_path):
     return vcf_ids
 
 
+#slx_id_to_search = "SLX-24034"
 # Example usage
 slx_id_to_search = os.path.basename(md["bamfiles"][0]).split("-")[0].replace("SLX","SLX-")
 sample_table_path = '/projects/molonc/scratch/sbeatty/SCY-288/reference__data/sample_table.tsv'
@@ -68,12 +69,17 @@ def getbamfile(wildcards):
 
 rule all:
     input:
-        expand("{bampath_i}.bai", bampath_i=md["bamfiles"]),
-        "results/output/vireo/summary.tsv",
-        "results/output/cluster_assignment_pca_plot.png",
-        str(donor_vcf_to_generate),
-        "results/output/check_sequencing_run_count.png",
-        
+        expand("{bampath_i}.bai", bampath_i=md["bamfiles"])
+
+rule samtools_index:
+    input:
+        "{bampath_i}"
+    output:
+        "{bampath_i}.bai"
+    shell:
+        "/gsc/software/linux-x86_64-centos7/samtools-1.9/bin/samtools index {input}"
+
+
 rule make_vcf_reference:
     input:
         "/projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
@@ -85,13 +91,7 @@ rule make_vcf_reference:
     shell:
         "//gsc/software/linux-x86_64-centos7/bcftools-1.9/bin/bcftools view -o " + str(donor_vcf_to_generate) + " -s {params.result_str}" + " /projects/molonc/scratch/sbeatty/SCY-263/VCFs/merged.vcf"
 
-rule samtools_index:
-    input:
-        "{bampath_i}"
-    output:
-        "{bampath_i}.bai"
-    shell:
-        "/gsc/software/linux-x86_64-centos7/samtools-1.9/bin/samtools index {input}"
+
 
 rule genotypecells:
     input:
@@ -198,3 +198,8 @@ rule compare_pca_vireo:
         """
         python /projects/molonc/scratch/sbeatty/SCY-289/leap_deconvolution/compare_vireo_pca.py {input.cluster_assignment_csv} results/output/vireo/donor_ids.tsv {output.pca_vireo_figure}
         """
+
+
+
+#
+
